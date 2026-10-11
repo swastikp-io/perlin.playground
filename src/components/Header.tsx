@@ -1,14 +1,16 @@
 import React from 'react';
 
 interface HeaderProps {
+  onRandomize: () => void;
   onExportImage: () => void;
   onExportVideo: () => void;
   isRecording: boolean;
-  recordingCountdown: number | null;
-  recordingError: string | null;
+  recordingCountdown?: number | null;
+  recordingError?: string | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
+  onRandomize,
   onExportImage,
   onExportVideo,
   isRecording,
@@ -30,8 +32,36 @@ export const Header: React.FC<HeaderProps> = ({
         )}
 
         <button
+          id="btn-randomize"
+          className="btn-action btn-randomize"
+          onClick={onRandomize}
+          disabled={isRecording}
+          type="button"
+          title="Generate a randomized composition"
+        >
+          <svg
+            className="btn-icon"
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M16 3h5v5" />
+            <path d="M4 20L21 3" />
+            <path d="M21 16v5h-5" />
+            <path d="M15 15l6 6" />
+            <path d="M4 4l5 5" />
+          </svg>
+          Randomize
+        </button>
+
+        <button
           id="btn-export-image"
-          className="btn-export"
+          className="btn-action btn-export"
           onClick={onExportImage}
           disabled={isRecording}
           type="button"
@@ -41,13 +71,13 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           id="btn-export-video"
-          className={`btn-export ${isRecording ? 'btn-recording' : ''}`}
+          className={`btn-action btn-export ${isRecording ? 'btn-recording' : ''}`}
           onClick={onExportVideo}
-          disabled={isRecording}
           type="button"
+          title={isRecording ? 'View recording progress / Cancel' : 'Open Video Export settings'}
         >
           {isRecording
-            ? `Recording... ${recordingCountdown !== null ? `(${recordingCountdown}s)` : ''}`
+            ? `Recording... ${recordingCountdown ? `(${recordingCountdown}s)` : ''}`
             : 'Export Video'}
         </button>
       </div>
