@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import p5 from 'p5';
 import type { Config } from '../graphics/types';
 import { render } from '../graphics/renderer';
@@ -11,7 +11,7 @@ export type RenderExporter = (
   quality: number
 ) => Promise<Blob>;
 
-export function Canvas({
+export const Canvas = memo(function Canvas({
   config,
   onReady,
   onExporter,
@@ -31,6 +31,7 @@ export function Canvas({
   const timelineRef = useRef(config.time.offset);
   const lastTimestampRef = useRef<number | null>(null);
   const resetTokenRef = useRef(config.time.resetToken);
+  const wasPlayingRef = useRef(config.time.playing);
   const onReadyRef = useRef(onReady);
   const onExporterRef = useRef(onExporter);
   const onTimeChangeRef = useRef(onTimeChange);
@@ -45,20 +46,19 @@ export function Canvas({
   onFpsChangeRef.current = onFpsChange;
 
   useEffect(() => {
-    const resetRequested = config.time.resetToken !== resetTokenRef.current;
-    resetTokenRef.current = config.time.resetToken;
-    if (resetRequested) timelineRef.current = config.time.offset;
-    configRef.current = structuredClone(config);
-    // The canvas owns the live elapsed clock. Controls update settings without
-    // rewinding playback; reset/seek explicitly changes resetToken.
-    configRef.current.time.offset = timelineRef.current;
-  }, [config]);
-
-  useEffect(() => {
     if (!host.current) return;
 
     let isCancelled = false;
     isReadyRef.current = false;
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        lastTimestampRef.current = null;
+      } else {
+        lastTimestampRef.current = performance.now();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
 
     const sketch = (p: p5) => {
       p.setup = () => {
@@ -77,14 +77,14 @@ export function Canvas({
         const exporter: RenderExporter = async (width, height, format, quality) => {
           const liveCanvas = ((p as any).canvas || (p as any)._renderer?.canvas) as HTMLCanvasElement;
           const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
-          // A 1× current-size export is the already-composited frame the user
-          // sees; it neither redraws nor advances the animation clock.
           if (width === p.width && height === p.height && liveCanvas) {
-            return new Promise<Blob>((resolve, reject) => liveCanvas.toBlob(
-              (blob) => blob ? resolve(blob) : reject(new Error('Failed to encode current frame')),
-              mimeType,
-              quality
-            ));
+            return new Promise<Blob>((resolve, reject) =>
+              liveCanvas.toBlob(
+                (blob) => (blob ? resolve(blob) : reject(new Error('Failed to encode current frame'))),
+                mimeType,
+                quality
+              )
+            );
           }
           const out = structuredClone(configRef.current);
           out.time.offset = timelineRef.current;
@@ -116,6 +116,7 @@ export function Canvas({
 
         onExporterRef.current(exporter);
 
+        wasPlayingRef.current = configRef.current.time.playing;
         if (configRef.current.time.playing) {
           lastTimestampRef.current = performance.now();
           lastFpsTimeRef.current = performance.now();
@@ -133,7 +134,6 @@ export function Canvas({
         if (configRef.current.time.playing) {
           const now = performance.now();
           const previous = lastTimestampRef.current ?? now;
-          // Cap a background-tab catch-up at 100 ms to avoid a discontinuity.
           lastTimestampRef.current = now;
           timelineRef.current = advanceTimeline(timelineRef.current, now - previous, configRef.current.time);
 
@@ -160,7 +160,9 @@ export function Canvas({
     return () => {
       isCancelled = true;
       isReadyRef.current = false;
+      document.removeEventListener('visibilitychange', handleVisibility);
       try {
+        instance.current?.noLoop();
         instance.current?.remove();
       } catch {
         // Safe cleanup
@@ -173,6 +175,12 @@ export function Canvas({
   }, []);
 
   useEffect(() => {
+    const resetRequested = config.time.resetToken !== resetTokenRef.current;
+    resetTokenRef.current = config.time.resetToken;
+    if (resetRequested) timelineRef.current = config.time.offset;
+    configRef.current = structuredClone(config);
+    configRef.current.time.offset = timelineRef.current;
+
     const p = instance.current;
     if (!p || !isReadyRef.current) return;
 
@@ -185,18 +193,25 @@ export function Canvas({
       }
     }
 
-    if (config.time.playing) {
-      lastTimestampRef.current = performance.now();
-      lastFpsTimeRef.current = performance.now();
-      frameCountRef.current = 0;
-      p.loop();
-    } else {
-      p.noLoop();
-      configRef.current.time.offset = timelineRef.current;
+    const playingChanged = config.time.playing !== wasPlayingRef.current;
+    wasPlayingRef.current = config.time.playing;
+
+    if (playingChanged) {
+      if (config.time.playing) {
+        lastTimestampRef.current = performance.now();
+        lastFpsTimeRef.current = performance.now();
+        frameCountRef.current = 0;
+        p.loop();
+      } else {
+        p.noLoop();
+        render(p, configRef.current);
+        onFpsChangeRef.current?.(0);
+      }
+    } else if (!config.time.playing) {
       render(p, configRef.current);
-      onFpsChangeRef.current?.(0);
     }
   }, [config]);
 
   return <div className="canvas-host" ref={host} />;
-}
+});
+

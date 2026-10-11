@@ -1,7 +1,7 @@
 import type p5 from 'p5';
 import type { Config } from './types';
 import { mix } from './palettes';
-import { normalized, perlinForSeed } from '../noise/PerlinNoise';
+import { normalized, perlinForSeed, type PerlinNoise } from '../noise/PerlinNoise';
 
 const hash=(s:string)=>{let h=2166136261;for(let i=0;i<s.length;i++)h=Math.imul(h^s.charCodeAt(i),16777619);return h>>>0};
 const rng=(seed:string)=>{let s=hash(seed)||1;return()=>((s=Math.imul(1664525,s)+1013904223>>>0)/4294967296)};
@@ -109,68 +109,259 @@ export function maskValue(c: Config, x: number, y: number) {
   return m.invert ? 1 - inside : inside;
 }
 
-export function sample(_p: p5, c: Config, x: number, y: number, tOrCoords?: number | AnimationTimeCoords, _pInst?: p5) {
-  const n = c.noise, rad = n.domainRotation, co = Math.cos(rad), si = Math.sin(rad);
-  let nx = (x * n.scale * n.scaleX + n.offsetX), ny = (y * n.scale * n.scaleY + n.offsetY);
-  [nx, ny] = [nx * co - ny * si, nx * si + ny * co];
-  const engine = perlinForSeed(c.seed);
-  const settings = { octaves: n.octaves, persistence: n.falloff, lacunarity: n.lacunarity, amplitude: n.strength };
+export class FastNoiseSampler {
+  readonly engine: PerlinNoise;
+  readonly settings: { octaves: number; persistence: number; lacunarity: number; amplitude?: number };
+  readonly coords: AnimationTimeCoords;
+  readonly n: Config['noise'];
+  readonly co: number;
+  readonly si: number;
+  readonly hasDistortion: boolean;
+  readonly hasSecondary: boolean;
+  readonly isLoop: boolean;
+  readonly z4: number;
+  readonly w4: number;
+  readonly t3: number;
+  readonly contrast: number;
+  readonly scaleX: number;
+  readonly scaleY: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
+  readonly distortionMul: number;
+  readonly secondaryInfluence: number;
 
-  let coords: AnimationTimeCoords;
-  if (typeof tOrCoords === 'object' && tOrCoords !== null && 'isLoop' in tOrCoords) {
-    coords = tOrCoords;
-  } else if (typeof tOrCoords === 'number') {
-    coords = { isLoop: false, t3: tOrCoords, z4: 0, w4: 0, phase: 0 };
-  } else {
-    coords = computeAnimationCoords(c.time);
+  constructor(c: Config, tOrCoords?: number | AnimationTimeCoords) {
+    this.n = c.noise;
+    this.co = Math.cos(this.n.domainRotation);
+    this.si = Math.sin(this.n.domainRotation);
+    this.scaleX = this.n.scale * this.n.scaleX;
+    this.scaleY = this.n.scale * this.n.scaleY;
+    this.offsetX = this.n.offsetX;
+    this.offsetY = this.n.offsetY;
+    this.contrast = this.n.contrast;
+    this.hasDistortion = Boolean(this.n.distortion);
+    this.distortionMul = this.n.distortion * 8;
+    this.hasSecondary = Boolean(this.n.secondary);
+    this.secondaryInfluence = this.n.secondaryInfluence;
+    this.engine = perlinForSeed(c.seed);
+    this.settings = {
+      octaves: this.n.octaves,
+      persistence: this.n.falloff,
+      lacunarity: this.n.lacunarity,
+      amplitude: this.n.strength,
+    };
+
+    if (typeof tOrCoords === 'object' && tOrCoords !== null && 'isLoop' in tOrCoords) {
+      this.coords = tOrCoords;
+    } else if (typeof tOrCoords === 'number') {
+      this.coords = { isLoop: false, t3: tOrCoords, z4: 0, w4: 0, phase: 0 };
+    } else {
+      this.coords = computeAnimationCoords(c.time);
+    }
+    this.isLoop = this.coords.isLoop;
+    this.z4 = this.coords.z4;
+    this.w4 = this.coords.w4;
+    this.t3 = this.coords.t3;
   }
 
-  const sampleNoise = coords.isLoop
-    ? (a: number, b: number, scale = 1) =>
-        normalized(engine.fractal4D(a, b, coords.z4 * scale, coords.w4 * scale, settings))
-    : (a: number, b: number, scale = 1) =>
-        normalized(engine.fractal3D(a, b, coords.t3 * scale, settings));
+  sample(x: number, y: number): number {
+    const rawX = x * this.scaleX + this.offsetX;
+    const rawY = y * this.scaleY + this.offsetY;
+    let nx = rawX * this.co - rawY * this.si;
+    let ny = rawX * this.si + rawY * this.co;
 
-  if (n.distortion) {
-    const d = sampleNoise(nx * 1.7, ny * 1.7) * n.distortion * 8;
-    nx += d;
-    ny += d * 0.7;
+    const engine = this.engine;
+    const settings = this.settings;
+
+    if (this.hasDistortion) {
+      const d = (this.isLoop
+        ? normalized(engine.fractal4D(nx * 1.7, ny * 1.7, this.z4, this.w4, settings))
+        : normalized(engine.fractal3D(nx * 1.7, ny * 1.7, this.t3, settings))) * this.distortionMul;
+      nx += d;
+      ny += d * 0.7;
+    }
+
+    let v = this.isLoop
+      ? normalized(engine.fractal4D(nx, ny, this.z4, this.w4, settings))
+      : normalized(engine.fractal3D(nx, ny, this.t3, settings));
+
+    if (this.hasSecondary) {
+      const vSec = this.isLoop
+        ? normalized(engine.fractal4D(nx * 2.37 + 17, ny * 2.37 - 9, this.z4 * 0.8, this.w4 * 0.8, settings))
+        : normalized(engine.fractal3D(nx * 2.37 + 17, ny * 2.37 - 9, this.t3 * 0.7, settings));
+      v = (1 - this.secondaryInfluence) * v + this.secondaryInfluence * vSec;
+    }
+
+    return clamp((v - 0.5) * this.contrast + 0.5);
   }
-
-  let v = sampleNoise(nx, ny);
-
-  if (n.secondary) {
-    const vSec = sampleNoise(nx * 2.37 + 17, ny * 2.37 - 9, coords.isLoop ? 0.8 : 0.7);
-    v = (1 - n.secondaryInfluence) * v + n.secondaryInfluence * vSec;
-  }
-  return clamp((v - 0.5) * n.contrast + 0.5);
 }
+
+export function sample(_p: p5, c: Config, x: number, y: number, tOrCoords?: number | AnimationTimeCoords, _pInst?: p5) {
+  return new FastNoiseSampler(c, tOrCoords).sample(x, y);
+}
+
+let cachedFieldPixels: ImageData | null = null;
+let cachedFieldDim = '';
 
 function renderField(p: p5, c: Config, timeCoords: AnimationTimeCoords) {
   const width = c.canvas.width, height = c.canvas.height;
   const context = p.drawingContext as CanvasRenderingContext2D;
-  const pixels = context.getImageData(0, 0, width, height);
-  const data = pixels.data;
-  const mode = c.noise.visualization;
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    let value = sample(p, c, x, y, timeCoords);
-    if (mode === 'raw' || mode === 'animated') value = value;
-    if (mode === 'fbm') value = normalized(perlinForSeed(c.seed).fractal2D(x * c.noise.scale, y * c.noise.scale, { octaves: c.noise.octaves, persistence: c.noise.falloff, lacunarity: c.noise.lacunarity, amplitude: c.noise.strength }));
-    if (mode === 'contrast') value = clamp((value - 0.5) * c.noise.contrast + 0.5);
-    if (mode === 'threshold') value = value >= c.noise.threshold ? 1 : 0;
-    if (mode === 'contour-map') {
-      const bands = 10;
-      value = Math.abs(value * bands - Math.round(value * bands)) < 0.035 ? 0.08 : 0.94;
-    }
-    const color = Math.round(value * 255), index = (y * width + x) * 4;
-    data[index] = color; data[index + 1] = color; data[index + 2] = color; data[index + 3] = 255;
+  const dimKey = `${width}x${height}`;
+  if (!cachedFieldPixels || cachedFieldDim !== dimKey) {
+    cachedFieldPixels = context.createImageData(width, height);
+    cachedFieldDim = dimKey;
   }
-  context.putImageData(pixels, 0, 0);
+  const data = cachedFieldPixels.data;
+  const mode = c.noise.visualization;
+  const sampler = new FastNoiseSampler(c, timeCoords);
+  const fbmEngine = mode === 'fbm' ? perlinForSeed(c.seed) : null;
+  const fbmSettings = mode === 'fbm'
+    ? { octaves: c.noise.octaves, persistence: c.noise.falloff, lacunarity: c.noise.lacunarity, amplitude: c.noise.strength }
+    : null;
+
+  const step = c.canvas.quality === 'draft' ? 3 : c.canvas.quality === 'balanced' ? 2 : 1;
+
+  if (step === 1) {
+    for (let y = 0; y < height; y++) {
+      const rowOffset = y * width * 4;
+      for (let x = 0; x < width; x++) {
+        let value = sampler.sample(x, y);
+        if (mode === 'fbm' && fbmEngine && fbmSettings) {
+          value = normalized(fbmEngine.fractal2D(x * c.noise.scale, y * c.noise.scale, fbmSettings));
+        } else if (mode === 'contrast') {
+          value = clamp((value - 0.5) * c.noise.contrast + 0.5);
+        } else if (mode === 'threshold') {
+          value = value >= c.noise.threshold ? 1 : 0;
+        } else if (mode === 'contour-map') {
+          const bands = 10;
+          value = Math.abs(value * bands - Math.round(value * bands)) < 0.035 ? 0.08 : 0.94;
+        }
+        const color = (value * 255 + 0.5) | 0;
+        const index = rowOffset + x * 4;
+        data[index] = color;
+        data[index + 1] = color;
+        data[index + 2] = color;
+        data[index + 3] = 255;
+      }
+    }
+  } else {
+    for (let y = 0; y < height; y += step) {
+      for (let x = 0; x < width; x += step) {
+        let value = sampler.sample(x, y);
+        if (mode === 'fbm' && fbmEngine && fbmSettings) {
+          value = normalized(fbmEngine.fractal2D(x * c.noise.scale, y * c.noise.scale, fbmSettings));
+        } else if (mode === 'contrast') {
+          value = clamp((value - 0.5) * c.noise.contrast + 0.5);
+        } else if (mode === 'threshold') {
+          value = value >= c.noise.threshold ? 1 : 0;
+        } else if (mode === 'contour-map') {
+          const bands = 10;
+          value = Math.abs(value * bands - Math.round(value * bands)) < 0.035 ? 0.08 : 0.94;
+        }
+        const color = (value * 255 + 0.5) | 0;
+        const maxY = Math.min(height, y + step);
+        const maxX = Math.min(width, x + step);
+        for (let dy = y; dy < maxY; dy++) {
+          const rowOffset = dy * width * 4;
+          for (let dx = x; dx < maxX; dx++) {
+            const index = rowOffset + dx * 4;
+            data[index] = color;
+            data[index + 1] = color;
+            data[index + 2] = color;
+            data[index + 3] = 255;
+          }
+        }
+      }
+    }
+  }
+  context.putImageData(cachedFieldPixels, 0, 0);
+}
+
+
+interface CachedGridPoint {
+  px: number;
+  py: number;
+  inside: number;
+  density: number;
+  randRot: number;
+  randAlpha: number;
+  randAlt: number;
+  randJitterX: number;
+  randJitterY: number;
+}
+
+let cachedGridPoints: CachedGridPoint[] | null = null;
+let cachedGridKey = '';
+
+function getStaticGridPoints(
+  c: Config,
+  w: number,
+  h: number,
+  margin: number,
+  sx: number,
+  sy: number,
+  rows: number,
+  max: number
+): CachedGridPoint[] | null {
+  if (c.mode === 'density') return null; // density mode depends on v
+
+  const key = `${c.seed}|${w}|${h}|${margin}|${sx.toFixed(4)}|${sy.toFixed(4)}|${rows}|${max}|${c.grid.distribution}|${c.grid.jitter}|${c.mask.type}|${c.mask.x}|${c.mask.y}|${c.mask.width}|${c.mask.height}|${c.mask.rotation}|${c.mask.feather}|${c.mask.invert}|${c.mask.threshold}|${c.mask.insideDensity}|${c.mask.outsideDensity}|${c.mark.density}|${c.mark.rotationRandom}|${c.mark.jitter}|${c.noise.field}|${c.color.mapping}`;
+
+  if (cachedGridPoints && cachedGridKey === key) {
+    return cachedGridPoints;
+  }
+
+  const rand = rng(c.seed);
+  const pts: CachedGridPoint[] = [];
+  let count = 0;
+
+  for (let row = 0; row <= rows; row++) {
+    for (let x = margin; x <= w - margin; x += sx) {
+      if (++count > max) break;
+      const y = margin + row * sy;
+      const stagger = c.grid.distribution === 'staggered' && row % 2 ? sx / 2 : 0;
+      const jitter = c.grid.distribution === 'jittered' ? c.grid.jitter : 0;
+      let px = x + stagger + (rand() - 0.5) * jitter * 2;
+      let py = y + (rand() - 0.5) * jitter * 2;
+      if (c.grid.distribution === 'polar') {
+        const theta = ((x - margin) / Math.max(1, w - margin * 2)) * Math.PI * 2;
+        const radius = (row / Math.max(rows, 1)) * (Math.min(w, h) / 2 - margin);
+        px = w / 2 + Math.cos(theta) * radius;
+        py = h / 2 + Math.sin(theta) * radius;
+      }
+      const inside = maskValue(c, px, py);
+      const density = (c.mask.outsideDensity + (c.mask.insideDensity - c.mask.outsideDensity) * inside) * c.mark.density;
+
+      if (rand() > density * 0.98) continue;
+
+      const randRot = (rand() - 0.5) * c.mark.rotationRandom;
+      const randAlpha = c.noise.field === 'density' ? 0 : rand();
+      const randAlt = c.color.mapping === 'alternate' ? (rand() > 0.5 ? 1 : 0) : 0;
+      const randJitterX = (rand() - 0.5) * c.mark.jitter;
+      const randJitterY = (rand() - 0.5) * c.mark.jitter;
+
+      pts.push({
+        px,
+        py,
+        inside,
+        density,
+        randRot,
+        randAlpha,
+        randAlt,
+        randJitterX,
+        randJitterY,
+      });
+    }
+    if (count > max) break;
+  }
+
+  cachedGridPoints = pts;
+  cachedGridKey = key;
+  return pts;
 }
 
 export function render(p: p5, c: Config, pInst?: p5) {
   const { width: w, height: h } = c.canvas;
-  const rand = rng(c.seed);
   const q = c.canvas.quality === 'draft' ? 1.8 : c.canvas.quality === 'high' ? 0.75 : 1;
   const ctx = p.drawingContext as CanvasRenderingContext2D | null;
   if (!ctx) return;
@@ -184,7 +375,7 @@ export function render(p: p5, c: Config, pInst?: p5) {
   p.rotate(c.grid.rotation);
   p.scale(c.grid.scale);
   p.translate(-w / 2, -h / 2);
-  p.noFill();
+  p.strokeWeight(c.mark.thickness);
   p.strokeCap('round' as any);
 
   let sx = Math.max(2, c.grid.spacingX * q);
@@ -199,7 +390,6 @@ export function render(p: p5, c: Config, pInst?: p5) {
     sx = Math.max(2, sx * scaleFactor);
     sy = Math.max(2, sy * scaleFactor);
   }
-  let count = 0;
   const rows = Math.max(0, Math.ceil((h - margin * 2) / sy));
   const timeCoords = computeAnimationCoords(c.time);
 
@@ -209,68 +399,132 @@ export function render(p: p5, c: Config, pInst?: p5) {
     return;
   }
 
-  for (let row = 0; row <= rows; row++) {
-    for (let x = margin; x <= w - margin; x += sx) {
-      if (++count > max) break;
-      const y = margin + row * sy;
-      const stagger = c.grid.distribution === 'staggered' && row % 2 ? sx / 2 : 0;
-      const jitter = (c.grid.distribution === 'jittered' ? c.grid.jitter : 0);
-      let px = x + stagger + (rand() - 0.5) * jitter * 2;
-      let py = y + (rand() - 0.5) * jitter * 2;
-      if (c.grid.distribution === 'polar') {
-        const theta = ((x - margin) / Math.max(1, w - margin * 2)) * Math.PI * 2;
-        const radius = (row / Math.max(rows, 1)) * (Math.min(w, h) / 2 - margin);
-        px = w / 2 + Math.cos(theta) * radius;
-        py = h / 2 + Math.sin(theta) * radius;
-      }
-      const v = sample(p, c, px, py, timeCoords, pInst);
-      const inside = maskValue(c, px, py);
-      const density = (c.mask.outsideDensity + (c.mask.insideDensity - c.mask.outsideDensity) * inside) * c.mark.density;
-      if (rand() > density * (c.mode === 'density' ? v : 0.98)) continue;
+  const sampler = new FastNoiseSampler(c, timeCoords);
 
-      let angle = v * c.noise.directionMultiplier + c.noise.directionOffset + c.mark.rotation + (rand() - 0.5) * c.mark.rotationRandom;
-      let dx = 0, dy = 0;
+  // Precompute 256-level palette LUT for instant color mapping
+  const usePaletteLUT = c.color.mapping === 'noise' || c.color.mapping === 'gradient';
+  let paletteLUT: string[] | null = null;
+  if (usePaletteLUT) {
+    paletteLUT = new Array(256);
+    for (let i = 0; i < 256; i++) {
+      paletteLUT[i] = mix(c.color.foreground, c.color.secondary, i / 255);
+    }
+  }
+
+  const isLineType = c.mark.type === 'line' || c.mark.type === 'long-line';
+  const isNoStrokeType =
+    c.mode === 'stipple' ||
+    c.mark.type === 'dot' ||
+    c.mark.type === 'ellipse' ||
+    c.mark.type === 'circle' ||
+    c.mark.type === 'polygon';
+
+  if (isLineType) {
+    p.noFill();
+  }
+  if (isNoStrokeType) {
+    p.noStroke();
+  }
+
+  let lastStroke = '';
+  let lastFill = '';
+
+  const staticPts = getStaticGridPoints(c, w, h, margin, sx, sy, rows, max);
+
+  if (staticPts) {
+    // Fast path: cached invariant grid points
+    const ptsLen = staticPts.length;
+    for (let i = 0; i < ptsLen; i++) {
+      const pt = staticPts[i];
+      const px = pt.px;
+      const py = pt.py;
+      const v = sampler.sample(px, py);
+
+      let angle =
+        v * c.noise.directionMultiplier +
+        c.noise.directionOffset +
+        c.mark.rotation +
+        pt.randRot;
+      let dx = 0,
+        dy = 0;
       if (c.mode === 'displacement' || c.mode === 'vector') {
         dx = Math.cos(angle) * v * c.noise.strength * 30;
         dy = Math.sin(angle) * v * c.noise.strength * 30;
       }
       if (c.mode === 'contours') {
         if (Math.abs(v - 0.5) > 0.045) continue;
-        angle = Math.atan2(sample(p, c, px, py + 2, timeCoords, pInst) - v, sample(p, c, px + 2, py, timeCoords, pInst) - v) + Math.PI / 2;
+        angle =
+          Math.atan2(
+            sampler.sample(px, py + 2) - v,
+            sampler.sample(px + 2, py) - v
+          ) +
+          Math.PI / 2;
       }
       if (c.noise.field === 'displacement' && c.mode === 'flow') {
         dx += (v - 0.5) * c.noise.strength * 36;
-        dy += (sample(p, c, px + 91, py - 37, timeCoords, pInst) - 0.5) * c.noise.strength * 36;
+        dy += (sampler.sample(px + 91, py - 37) - 0.5) * c.noise.strength * 36;
       }
       if (c.noise.field === 'rotation') angle += v * Math.PI * 2;
-      if (c.noise.field === 'combined') angle += (sample(p, c, px + 73, py + 11, timeCoords, pInst) - 0.5) * c.noise.turbulence;
+      if (c.noise.field === 'combined') {
+        angle +=
+          (sampler.sample(px + 73, py + 11) - 0.5) * c.noise.turbulence;
+      }
 
-      const len = c.mark.length * (c.noise.field === 'length' ? 0.2 + v * 1.8 : 0.4 + v) * c.noise.strength;
-      const alpha = c.mark.minOpacity + (c.mark.maxOpacity - c.mark.minOpacity) * (c.mode === 'density' || c.noise.field === 'density' ? v : rand());
-      let col = c.color.foreground;
+      const len =
+        c.mark.length *
+        (c.noise.field === 'length' ? 0.2 + v * 1.8 : 0.4 + v) *
+        c.noise.strength;
+      const alpha =
+        c.mark.minOpacity +
+        (c.mark.maxOpacity - c.mark.minOpacity) *
+          (c.noise.field === 'density' ? v : pt.randAlpha);
+
+      let col: string;
       if (c.color.mapping === 'alternate') {
-        col = rand() > 0.5 ? c.color.foreground : c.color.secondary;
-      } else if (c.color.mapping === 'gradient' || c.color.mapping === 'noise') {
-        col = mix(c.color.foreground, c.color.secondary, c.color.mapping === 'noise' ? v : px / Math.max(1, w));
+        col = pt.randAlt ? c.color.foreground : c.color.secondary;
+      } else if (usePaletteLUT && paletteLUT) {
+        const lutIdx =
+          c.color.mapping === 'noise'
+            ? (v * 255 + 0.5) | 0
+            : ((px / Math.max(1, w)) * 255 + 0.5) | 0;
+        col = paletteLUT[lutIdx < 0 ? 0 : lutIdx > 255 ? 255 : lutIdx];
+      } else {
+        col = c.color.foreground;
       }
       if (c.color.invert) col = c.color.background;
 
-      p.stroke(col);
-      p.fill(col);
-      p.strokeWeight(c.mark.thickness);
-      ctx.globalAlpha = clamp(alpha * (c.mask.type === 'none' ? 1 : c.mask.influence + (1 - c.mask.influence) * inside), 0, 1);
+      if (!isNoStrokeType && col !== lastStroke) {
+        p.stroke(col);
+        lastStroke = col;
+      }
+      if (!isLineType && col !== lastFill) {
+        p.fill(col);
+        lastFill = col;
+      }
 
-      const X = px + dx + (rand() - 0.5) * c.mark.jitter;
-      const Y = py + dy + (rand() - 0.5) * c.mark.jitter;
+      ctx.globalAlpha = clamp(
+        alpha *
+          (c.mask.type === 'none'
+            ? 1
+            : c.mask.influence + (1 - c.mask.influence) * pt.inside),
+        0,
+        1
+      );
+
+      const X = px + dx + pt.randJitterX;
+      const Y = py + dy + pt.randJitterY;
 
       if (c.mode === 'stipple' || c.mark.type === 'dot') {
-        p.noStroke();
         p.circle(X, Y, Math.max(1, c.mark.width * (0.4 + v * 2)));
         continue;
       }
       if (c.mark.type === 'ellipse' || c.mark.type === 'circle') {
-        p.noStroke();
-        p.ellipse(X, Y, c.mark.width * (0.5 + v), c.mark.type === 'circle' ? c.mark.width * (0.5 + v) : len * 0.45);
+        p.ellipse(
+          X,
+          Y,
+          c.mark.width * (0.5 + v),
+          c.mark.type === 'circle' ? c.mark.width * (0.5 + v) : len * 0.45
+        );
         continue;
       }
       if (c.mark.type === 'rectangle') {
@@ -283,7 +537,6 @@ export function render(p: p5, c: Config, pInst?: p5) {
         continue;
       }
       if (c.mark.type === 'arc') {
-        p.noFill();
         p.arc(X, Y, len, len, angle, angle + Math.PI * 0.8);
         continue;
       }
@@ -291,10 +544,9 @@ export function render(p: p5, c: Config, pInst?: p5) {
         p.push();
         p.translate(X, Y);
         p.rotate(angle);
-        p.noStroke();
         p.beginShape();
         for (let q = 0; q < 5; q++) {
-          const a = q * Math.PI * 2 / 5 - Math.PI / 2;
+          const a = (q * Math.PI * 2) / 5 - Math.PI / 2;
           p.vertex(Math.cos(a) * len * 0.35, Math.sin(a) * len * 0.35);
         }
         p.endShape('close' as any);
@@ -303,17 +555,163 @@ export function render(p: p5, c: Config, pInst?: p5) {
       }
 
       const lineLength = c.mark.type === 'long-line' ? len * 2.6 : len;
-      p.line(
-        X - Math.cos(angle) * lineLength / 2,
-        Y - Math.sin(angle) * lineLength / 2,
-        X + Math.cos(angle) * lineLength / 2,
-        Y + Math.sin(angle) * lineLength / 2
-      );
+      const cosA = Math.cos(angle) * lineLength * 0.5;
+      const sinA = Math.sin(angle) * lineLength * 0.5;
+      p.line(X - cosA, Y - sinA, X + cosA, Y + sinA);
     }
-    if (count > max) break;
+  } else {
+    // Dynamic path for density mode
+    const rand = rng(c.seed);
+    let count = 0;
+    for (let row = 0; row <= rows; row++) {
+      for (let x = margin; x <= w - margin; x += sx) {
+        if (++count > max) break;
+        const y = margin + row * sy;
+        const stagger = c.grid.distribution === 'staggered' && row % 2 ? sx / 2 : 0;
+        const jitter = c.grid.distribution === 'jittered' ? c.grid.jitter : 0;
+        let px = x + stagger + (rand() - 0.5) * jitter * 2;
+        let py = y + (rand() - 0.5) * jitter * 2;
+        if (c.grid.distribution === 'polar') {
+          const theta = ((x - margin) / Math.max(1, w - margin * 2)) * Math.PI * 2;
+          const radius = (row / Math.max(rows, 1)) * (Math.min(w, h) / 2 - margin);
+          px = w / 2 + Math.cos(theta) * radius;
+          py = h / 2 + Math.sin(theta) * radius;
+        }
+        const v = sampler.sample(px, py);
+        const inside = maskValue(c, px, py);
+        const density =
+          (c.mask.outsideDensity +
+            (c.mask.insideDensity - c.mask.outsideDensity) * inside) *
+          c.mark.density;
+        if (rand() > density * (c.mode === 'density' ? v : 0.98)) continue;
+
+        let angle =
+          v * c.noise.directionMultiplier +
+          c.noise.directionOffset +
+          c.mark.rotation +
+          (rand() - 0.5) * c.mark.rotationRandom;
+        let dx = 0,
+          dy = 0;
+        if (c.mode === 'displacement' || c.mode === 'vector') {
+          dx = Math.cos(angle) * v * c.noise.strength * 30;
+          dy = Math.sin(angle) * v * c.noise.strength * 30;
+        }
+        if (c.mode === 'contours') {
+          if (Math.abs(v - 0.5) > 0.045) continue;
+          angle =
+            Math.atan2(
+              sampler.sample(px, py + 2) - v,
+              sampler.sample(px + 2, py) - v
+            ) +
+            Math.PI / 2;
+        }
+        if (c.noise.field === 'displacement' && c.mode === 'flow') {
+          dx += (v - 0.5) * c.noise.strength * 36;
+          dy += (sampler.sample(px + 91, py - 37) - 0.5) * c.noise.strength * 36;
+        }
+        if (c.noise.field === 'rotation') angle += v * Math.PI * 2;
+        if (c.noise.field === 'combined') {
+          angle += (sampler.sample(px + 73, py + 11) - 0.5) * c.noise.turbulence;
+        }
+
+        const len =
+          c.mark.length *
+          (c.noise.field === 'length' ? 0.2 + v * 1.8 : 0.4 + v) *
+          c.noise.strength;
+        const alpha =
+          c.mark.minOpacity +
+          (c.mark.maxOpacity - c.mark.minOpacity) *
+            (c.mode === 'density' || c.noise.field === 'density' ? v : rand());
+        let col = c.color.foreground;
+        if (c.color.mapping === 'alternate') {
+          col = rand() > 0.5 ? c.color.foreground : c.color.secondary;
+        } else if (usePaletteLUT && paletteLUT) {
+          const lutIdx =
+            c.color.mapping === 'noise'
+              ? (v * 255 + 0.5) | 0
+              : ((px / Math.max(1, w)) * 255 + 0.5) | 0;
+          col = paletteLUT[lutIdx < 0 ? 0 : lutIdx > 255 ? 255 : lutIdx];
+        } else if (c.color.mapping === 'gradient' || c.color.mapping === 'noise') {
+          col = mix(
+            c.color.foreground,
+            c.color.secondary,
+            c.color.mapping === 'noise' ? v : px / Math.max(1, w)
+          );
+        }
+        if (c.color.invert) col = c.color.background;
+
+        if (!isNoStrokeType && col !== lastStroke) {
+          p.stroke(col);
+          lastStroke = col;
+        }
+        if (!isLineType && col !== lastFill) {
+          p.fill(col);
+          lastFill = col;
+        }
+
+        ctx.globalAlpha = clamp(
+          alpha *
+            (c.mask.type === 'none'
+              ? 1
+              : c.mask.influence + (1 - c.mask.influence) * inside),
+          0,
+          1
+        );
+
+        const X = px + dx + (rand() - 0.5) * c.mark.jitter;
+        const Y = py + dy + (rand() - 0.5) * c.mark.jitter;
+
+        if (c.mode === 'stipple' || c.mark.type === 'dot') {
+          p.circle(X, Y, Math.max(1, c.mark.width * (0.4 + v * 2)));
+          continue;
+        }
+        if (c.mark.type === 'ellipse' || c.mark.type === 'circle') {
+          p.ellipse(
+            X,
+            Y,
+            c.mark.width * (0.5 + v),
+            c.mark.type === 'circle' ? c.mark.width * (0.5 + v) : len * 0.45
+          );
+          continue;
+        }
+        if (c.mark.type === 'rectangle') {
+          p.push();
+          p.translate(X, Y);
+          p.rotate(angle);
+          p.rectMode('center' as any);
+          p.rect(0, 0, len, c.mark.width);
+          p.pop();
+          continue;
+        }
+        if (c.mark.type === 'arc') {
+          p.arc(X, Y, len, len, angle, angle + Math.PI * 0.8);
+          continue;
+        }
+        if (c.mark.type === 'polygon') {
+          p.push();
+          p.translate(X, Y);
+          p.rotate(angle);
+          p.beginShape();
+          for (let q = 0; q < 5; q++) {
+            const a = (q * Math.PI * 2) / 5 - Math.PI / 2;
+            p.vertex(Math.cos(a) * len * 0.35, Math.sin(a) * len * 0.35);
+          }
+          p.endShape('close' as any);
+          p.pop();
+          continue;
+        }
+
+        const lineLength = c.mark.type === 'long-line' ? len * 2.6 : len;
+        const cosA = Math.cos(angle) * lineLength * 0.5;
+        const sinA = Math.sin(angle) * lineLength * 0.5;
+        p.line(X - cosA, Y - sinA, X + cosA, Y + sinA);
+      }
+      if (count > max) break;
+    }
   }
 
   ctx.globalAlpha = 1;
   p.pop();
 }
+
 export function svgFor(c:Config){ const pts:string[]=[];const rand=rng(c.seed),sx=c.grid.spacingX,sy=c.grid.spacingY,engine=perlinForSeed(c.seed),settings={octaves:c.noise.octaves,persistence:c.noise.falloff,lacunarity:c.noise.lacunarity,amplitude:c.noise.strength};let n=0;for(let y=c.grid.margin;y<c.canvas.height-c.grid.margin;y+=sy)for(let x=c.grid.margin;x<c.canvas.width-c.grid.margin;x+=sx){if(++n>Math.min(c.canvas.maxPoints,20000))break;const v=normalized(engine.fractal2D(x*c.noise.scale*c.noise.scaleX+c.noise.offsetX,y*c.noise.scale*c.noise.scaleY+c.noise.offsetY,settings));if(rand()>c.mark.density)continue;const a=v*c.noise.directionMultiplier+c.mark.rotation,L=c.mark.length*(.5+v);pts.push(`<line x1="${(x-Math.cos(a)*L/2).toFixed(2)}" y1="${(y-Math.sin(a)*L/2).toFixed(2)}" x2="${(x+Math.cos(a)*L/2).toFixed(2)}" y2="${(y+Math.sin(a)*L/2).toFixed(2)}"/>`);}const bg=c.color.transparent?'none':c.color.background;return `<svg xmlns="http://www.w3.org/2000/svg" width="${c.canvas.width}" height="${c.canvas.height}" viewBox="0 0 ${c.canvas.width} ${c.canvas.height}"><rect width="100%" height="100%" fill="${bg}"/><g stroke="${c.color.foreground}" stroke-width="${c.mark.thickness}" stroke-linecap="round">${pts.join('')}</g></svg>`;}
