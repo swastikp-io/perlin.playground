@@ -11,14 +11,15 @@ export type ShapeType =
 
 export type PaletteName =
   | 'Blueprint'
-  | 'Signal Depth'
-  | 'Pixel Midnight'
-  | 'Alert Mode'
-  | 'Steel Red'
-  | 'Gold Dust'
-  | 'Dark Violet'
-  | 'Rustfade'
   | 'Heatwave'
+  | 'Purple Raindrops'
+  | 'Deep Sea Blue'
+  | 'Pink Fantasy'
+  | 'Sunset Gradient'
+  | 'Whispering Woods'
+  | 'Enchanted Night'
+  | 'Pastel Dreamy Hues'
+  | 'Pastel Skies'
   | 'Custom';
 
 export interface PaletteDef {
@@ -82,7 +83,7 @@ export const DEFAULT_CONFIG: GraphicsConfig = {
   yOffset: 0,
 
   palette: 'Blueprint',
-  customBgColor: '#0c1017',
+  customBgColor: '#000000',
   customFgColor: '#58a6ff',
   minOpacity: 0.2,
   maxOpacity: 0.9,
@@ -109,7 +110,7 @@ export interface VideoExportSettings {
 }
 
 export const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
-  format: 'mp4',
+  format: 'webm',
   resolution: '1080p',
   duration: 15,
   fps: 30,

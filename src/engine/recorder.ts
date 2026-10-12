@@ -370,12 +370,12 @@ export function startHighQualityVideoExport(options: HighQualityExportOptions): 
   const totalBitrate = getTotalBitrate(settings.resolution, settings.fps, settings.quality, settings.totalBitrate, settings.dataRate);
 
   // 3. Create isolated offscreen container element.
-  // We keep it in the active viewport (left:0, top:0) with micro-scale and opacity:0.01
-  // so modern browser compositors do NOT throttle GPU rasterization and captureStream frames,
-  // while keeping it completely invisible to user interactions.
+  // We keep it in the active viewport (left:0, top:0) at full dimensions with opacity:0.01
+  // so modern browser compositors allocate full GPU hardware rasterization threads
+  // without layer-downscaling throttling, while remaining invisible to user interactions.
   const container = document.createElement('div');
   container.id = `offscreen-export-${Date.now()}`;
-  container.style.cssText = `position:fixed;left:0;top:0;width:${exportWidth}px;height:${exportHeight}px;opacity:0.01;pointer-events:none;z-index:-9999;transform:scale(0.001);transform-origin:0 0;`;
+  container.style.cssText = `position:fixed;left:0;top:0;width:${exportWidth}px;height:${exportHeight}px;opacity:0.01;pointer-events:none;z-index:-9999;overflow:hidden;`;
   document.body.appendChild(container);
 
   let offscreenP5: p5 | null = null;
@@ -519,59 +519,63 @@ export function startHighQualityVideoExport(options: HighQualityExportOptions): 
           options.onComplete?.();
         };
 
-        // Start recording with 1000ms chunk timeslice.
-        // Using ultra-short timeslices (like 100ms) forces the encoder to finalize clusters
-        // every ~3-6 frames, destroying rate-control VBV lookahead and capping bitrate to ~1.4 Mbps.
-        // A 1000ms slice lets the hardware/software encoder reach the requested target bitrate.
-        recorder.start(1000);
+        // Start recording continuously without fragmented timeslices.
+        // A single continuous stream prevents GOP fragmentation and timestamp stutter in MP4/H.264
+        // and produces pristine playback across Windows Media Player, QuickTime, and VLC.
+        recorder.start();
 
-        const startTime = performance.now();
+        const frameIntervalMs = 1000 / targetFps;
+        const totalFrames = Math.round(targetDurationSec * targetFps);
+        let currentFrame = 0;
+        let lastRenderTime = performance.now();
         const baseProgress = options.initialProgress || 0;
 
-        // Custom animation render loop driving exact timestamps
-        const renderLoop = (currentTime: number) => {
+        // Synchronized animation render loop paced to exact targetFps cadence
+        const renderLoop = (timestamp: number) => {
           if (isCancelled || isFinalized) return;
 
-          const elapsedMs = currentTime - startTime;
-          const elapsedSec = elapsedMs / 1000;
-          const percentage = Math.min(100, Math.round((elapsedMs / targetDurationMs) * 100));
+          const delta = timestamp - lastRenderTime;
+          // Synchronize rendering to targetFps intervals
+          if (delta >= frameIntervalMs || currentFrame === 0) {
+            lastRenderTime = timestamp - (delta % frameIntervalMs);
 
-          options.onProgress?.({
-            elapsedSeconds: Math.min(targetDurationSec, parseFloat(elapsedSec.toFixed(1))),
-            targetSeconds: targetDurationSec,
-            percentage,
-            status: 'rendering'
-          });
+            const elapsedSec = currentFrame / targetFps;
+            const percentage = Math.min(100, Math.round((currentFrame / totalFrames) * 100));
 
-          // Calculate deterministic loop phase from elapsed time
-          const currentLoopProgress =
-            (baseProgress + (elapsedSec * config.animationSpeed) / config.loopDuration) % 1;
+            options.onProgress?.({
+              elapsedSeconds: Math.min(targetDurationSec, parseFloat(elapsedSec.toFixed(1))),
+              targetSeconds: targetDurationSec,
+              percentage,
+              status: 'rendering'
+            });
 
-          // Render high-res frame using shared renderGraphicsFrame
-          renderGraphicsFrame(
-            p,
-            config,
-            exportWidth,
-            exportHeight,
-            currentLoopProgress,
-            options.referenceWidth,
-            options.referenceHeight
-          );
+            // Exact mathematical progress per frame - zero phase skips or timing jitter
+            const currentLoopProgress =
+              (baseProgress + (elapsedSec * config.animationSpeed) / config.loopDuration) % 1;
 
-          // Force-feed frame to captureStream track if supported by the browser engine
-          if (videoTrack && (videoTrack as any).requestFrame) {
-            try {
-              (videoTrack as any).requestFrame();
-            } catch (_) {}
+            // Render high-res frame
+            renderGraphicsFrame(
+              p,
+              config,
+              exportWidth,
+              exportHeight,
+              currentLoopProgress,
+              options.referenceWidth,
+              options.referenceHeight
+            );
+
+            currentFrame++;
           }
 
-          if (elapsedMs < targetDurationMs) {
+          if (currentFrame < totalFrames) {
             animFrameId = requestAnimationFrame(renderLoop);
           } else {
-            // Target duration reached: finalize
-            if (recorder && recorder.state === 'recording') {
-              recorder.stop();
-            }
+            // All frames delivered. Wait briefly to allow hardware encoder to flush final samples.
+            setTimeout(() => {
+              if (recorder && recorder.state === 'recording') {
+                recorder.stop();
+              }
+            }, 100);
           }
         };
 

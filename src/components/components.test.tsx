@@ -142,21 +142,22 @@ describe('UI Components Render Tests', () => {
     expect(html).toContain('input-y-offset');
   });
 
-  it('renders ColorControls with all 10 presets and opacity sliders', () => {
+  it('renders ColorControls with all presets and opacity sliders', () => {
     const html = renderToString(
       <ColorControls config={DEFAULT_CONFIG} onChange={() => {}} />
     );
     expect(html).toContain('Color');
     expect(html).toContain('Palette');
     expect(html).toContain('Blueprint');
-    expect(html).toContain('Signal Depth');
-    expect(html).toContain('Pixel Midnight');
-    expect(html).toContain('Alert Mode');
-    expect(html).toContain('Steel Red');
-    expect(html).toContain('Gold Dust');
-    expect(html).toContain('Dark Violet');
-    expect(html).toContain('Rustfade');
     expect(html).toContain('Heatwave');
+    expect(html).toContain('Purple Raindrops');
+    expect(html).toContain('Deep Sea Blue');
+    expect(html).toContain('Pink Fantasy');
+    expect(html).toContain('Sunset Gradient');
+    expect(html).toContain('Whispering Woods');
+    expect(html).toContain('Enchanted Night');
+    expect(html).toContain('Pastel Dreamy Hues');
+    expect(html).toContain('Pastel Skies');
     expect(html).toContain('Custom');
     expect(html).toContain('Foreground Minimum Opacity');
     expect(html).toContain('Foreground Maximum Opacity');
@@ -238,7 +239,7 @@ describe('UI Components Render Tests', () => {
       />
     );
     expect(html).toContain('Exporting Video');
-    expect(html).toContain('MP4');
+    expect(html).toContain('WEBM');
     expect(html).toContain('35%');
     expect(html).toContain('5.2s / 15s');
     expect(html).toContain('Rendering offscreen high-resolution frames...');

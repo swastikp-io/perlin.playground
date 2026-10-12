@@ -136,93 +136,196 @@ export function renderGraphicsFrame(
       const colorIdx = Math.floor(n * fgCount * 0.999) % fgCount;
       const [rCol, gCol, bCol] = fgRgbList[colorIdx];
 
-      p.push();
-      p.translate(cx, cy);
-      p.rotate(shapeRotAngle);
+      // High-performance Canvas2D drawing path to eliminate p5 style-stack cloning overhead
+      const ctx = (p as any).drawingContext as CanvasRenderingContext2D | undefined;
 
-      // Reset drawing state per shape
-      switch (shapeType) {
-        case 'Ellipse':
-          p.noStroke();
-          p.fill(rCol, gCol, bCol, alpha255);
-          p.ellipse(0, 0, wElem, hElem);
-          break;
-        case 'Rectangle':
-          p.noStroke();
-          p.fill(rCol, gCol, bCol, alpha255);
-          p.rectMode(p.CENTER);
-          p.rect(0, 0, wElem, hElem);
-          break;
-        case 'Line':
-          p.noFill();
-          p.stroke(rCol, gCol, bCol, alpha255);
-          p.strokeWeight(Math.max(1, Math.min(cellW, cellH) * 0.12));
-          p.line(-wElem / 2, 0, wElem / 2, 0);
-          break;
-        case 'Triangle': {
-          p.noStroke();
-          p.fill(rCol, gCol, bCol, alpha255);
-          const halfW = wElem * 0.5;
-          const halfH = hElem * 0.5;
-          p.beginShape();
-          p.vertex(0, -halfH);
-          p.vertex(halfW, halfH);
-          p.vertex(-halfW, halfH);
-          p.endShape(p.CLOSE);
-          break;
+      if (ctx && typeof ctx.save === 'function') {
+        ctx.save();
+        ctx.translate(cx, cy);
+        if (shapeRotAngle !== 0) {
+          ctx.rotate(shapeRotAngle);
         }
-        case 'Diamond': {
-          p.noStroke();
-          p.fill(rCol, gCol, bCol, alpha255);
-          const halfW = wElem * 0.5;
-          const halfH = hElem * 0.5;
-          p.beginShape();
-          p.vertex(0, -halfH);
-          p.vertex(halfW, 0);
-          p.vertex(0, halfH);
-          p.vertex(-halfW, 0);
-          p.endShape(p.CLOSE);
-          break;
-        }
-        case 'Hexagon': {
-          p.noStroke();
-          p.fill(rCol, gCol, bCol, alpha255);
-          const rx = wElem * 0.5;
-          const ry = hElem * 0.5;
-          p.beginShape();
-          for (let k = 0; k < 6; k++) {
-            const a = (k * Math.PI) / 3 - Math.PI / 6;
-            p.vertex(rx * Math.cos(a), ry * Math.sin(a));
+
+        const colorStr = `rgba(${rCol},${gCol},${bCol},${alphaNorm})`;
+
+        switch (shapeType) {
+          case 'Ellipse':
+            ctx.fillStyle = colorStr;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, Math.max(0.1, wElem * 0.5), Math.max(0.1, hElem * 0.5), 0, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+          case 'Rectangle':
+            ctx.fillStyle = colorStr;
+            ctx.beginPath();
+            ctx.rect(-wElem * 0.5, -hElem * 0.5, wElem, hElem);
+            ctx.fill();
+            break;
+          case 'Line':
+            ctx.strokeStyle = colorStr;
+            ctx.lineWidth = Math.max(1, Math.min(cellW, cellH) * 0.12);
+            ctx.beginPath();
+            ctx.moveTo(-wElem * 0.5, 0);
+            ctx.lineTo(wElem * 0.5, 0);
+            ctx.stroke();
+            break;
+          case 'Triangle': {
+            ctx.fillStyle = colorStr;
+            const halfW = wElem * 0.5;
+            const halfH = hElem * 0.5;
+            ctx.beginPath();
+            ctx.moveTo(0, -halfH);
+            ctx.lineTo(halfW, halfH);
+            ctx.lineTo(-halfW, halfH);
+            ctx.closePath();
+            ctx.fill();
+            break;
           }
-          p.endShape(p.CLOSE);
-          break;
+          case 'Diamond': {
+            ctx.fillStyle = colorStr;
+            const halfW = wElem * 0.5;
+            const halfH = hElem * 0.5;
+            ctx.beginPath();
+            ctx.moveTo(0, -halfH);
+            ctx.lineTo(halfW, 0);
+            ctx.lineTo(0, halfH);
+            ctx.lineTo(-halfW, 0);
+            ctx.closePath();
+            ctx.fill();
+            break;
+          }
+          case 'Hexagon': {
+            ctx.fillStyle = colorStr;
+            const rx = wElem * 0.5;
+            const ry = hElem * 0.5;
+            ctx.beginPath();
+            for (let k = 0; k < 6; k++) {
+              const a = (k * Math.PI) / 3 - Math.PI / 6;
+              const vx = rx * Math.cos(a);
+              const vy = ry * Math.sin(a);
+              if (k === 0) ctx.moveTo(vx, vy);
+              else ctx.lineTo(vx, vy);
+            }
+            ctx.closePath();
+            ctx.fill();
+            break;
+          }
+          case 'Arc':
+            ctx.strokeStyle = colorStr;
+            ctx.lineWidth = Math.max(1.5, Math.min(cellW, cellH) * 0.12);
+            ctx.beginPath();
+            ctx.arc(0, 0, Math.max(1, wElem * 0.5), 0, Math.PI * 1.5);
+            ctx.stroke();
+            break;
+          case 'Cross': {
+            ctx.fillStyle = colorStr;
+            const crossThickness = Math.max(1.5, Math.min(wElem, hElem) * 0.22);
+            ctx.beginPath();
+            ctx.rect(-wElem * 0.5, -crossThickness * 0.5, wElem, crossThickness);
+            ctx.rect(-crossThickness * 0.5, -hElem * 0.5, crossThickness, hElem);
+            ctx.fill();
+            break;
+          }
+          case 'Ring': {
+            ctx.strokeStyle = colorStr;
+            const ringWeight = Math.max(1.5, Math.min(cellW, cellH) * 0.14);
+            ctx.lineWidth = ringWeight;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, Math.max(0.1, (wElem - ringWeight) * 0.5), Math.max(0.1, (hElem - ringWeight) * 0.5), 0, 0, Math.PI * 2);
+            ctx.stroke();
+            break;
+          }
         }
-        case 'Arc':
-          p.noFill();
-          p.stroke(rCol, gCol, bCol, alpha255);
-          p.strokeWeight(Math.max(1.5, Math.min(cellW, cellH) * 0.12));
-          p.arc(0, 0, wElem, hElem, 0, p.PI * 1.5);
-          break;
-        case 'Cross': {
-          p.noStroke();
-          p.fill(rCol, gCol, bCol, alpha255);
-          p.rectMode(p.CENTER);
-          const crossThickness = Math.max(1.5, Math.min(wElem, hElem) * 0.22);
-          p.rect(0, 0, wElem, crossThickness);
-          p.rect(0, 0, crossThickness, hElem);
-          break;
-        }
-        case 'Ring': {
-          p.noFill();
-          p.stroke(rCol, gCol, bCol, alpha255);
-          const ringWeight = Math.max(1.5, Math.min(cellW, cellH) * 0.14);
-          p.strokeWeight(ringWeight);
-          p.ellipse(0, 0, Math.max(1, wElem - ringWeight), Math.max(1, hElem - ringWeight));
-          break;
-        }
-      }
 
-      p.pop();
+        ctx.restore();
+      } else {
+        p.push();
+        p.translate(cx, cy);
+        p.rotate(shapeRotAngle);
+
+        switch (shapeType) {
+          case 'Ellipse':
+            p.noStroke();
+            p.fill(rCol, gCol, bCol, alpha255);
+            p.ellipse(0, 0, wElem, hElem);
+            break;
+          case 'Rectangle':
+            p.noStroke();
+            p.fill(rCol, gCol, bCol, alpha255);
+            p.rectMode(p.CENTER);
+            p.rect(0, 0, wElem, hElem);
+            break;
+          case 'Line':
+            p.noFill();
+            p.stroke(rCol, gCol, bCol, alpha255);
+            p.strokeWeight(Math.max(1, Math.min(cellW, cellH) * 0.12));
+            p.line(-wElem / 2, 0, wElem / 2, 0);
+            break;
+          case 'Triangle': {
+            p.noStroke();
+            p.fill(rCol, gCol, bCol, alpha255);
+            const halfW = wElem * 0.5;
+            const halfH = hElem * 0.5;
+            p.beginShape();
+            p.vertex(0, -halfH);
+            p.vertex(halfW, halfH);
+            p.vertex(-halfW, halfH);
+            p.endShape(p.CLOSE);
+            break;
+          }
+          case 'Diamond': {
+            p.noStroke();
+            p.fill(rCol, gCol, bCol, alpha255);
+            const halfW = wElem * 0.5;
+            const halfH = hElem * 0.5;
+            p.beginShape();
+            p.vertex(0, -halfH);
+            p.vertex(halfW, 0);
+            p.vertex(0, halfH);
+            p.vertex(-halfW, 0);
+            p.endShape(p.CLOSE);
+            break;
+          }
+          case 'Hexagon': {
+            p.noStroke();
+            p.fill(rCol, gCol, bCol, alpha255);
+            const rx = wElem * 0.5;
+            const ry = hElem * 0.5;
+            p.beginShape();
+            for (let k = 0; k < 6; k++) {
+              const a = (k * Math.PI) / 3 - Math.PI / 6;
+              p.vertex(rx * Math.cos(a), ry * Math.sin(a));
+            }
+            p.endShape(p.CLOSE);
+            break;
+          }
+          case 'Arc':
+            p.noFill();
+            p.stroke(rCol, gCol, bCol, alpha255);
+            p.strokeWeight(Math.max(1.5, Math.min(cellW, cellH) * 0.12));
+            p.arc(0, 0, wElem, hElem, 0, p.PI * 1.5);
+            break;
+          case 'Cross': {
+            p.noStroke();
+            p.fill(rCol, gCol, bCol, alpha255);
+            p.rectMode(p.CENTER);
+            const crossThickness = Math.max(1.5, Math.min(wElem, hElem) * 0.22);
+            p.rect(0, 0, wElem, crossThickness);
+            p.rect(0, 0, crossThickness, hElem);
+            break;
+          }
+          case 'Ring': {
+            p.noFill();
+            p.stroke(rCol, gCol, bCol, alpha255);
+            const ringWeight = Math.max(1.5, Math.min(cellW, cellH) * 0.14);
+            p.strokeWeight(ringWeight);
+            p.ellipse(0, 0, Math.max(1, wElem - ringWeight), Math.max(1, hElem - ringWeight));
+            break;
+          }
+        }
+
+        p.pop();
+      }
     }
   }
 }

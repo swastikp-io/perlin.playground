@@ -3,61 +3,120 @@ import { PaletteDef, PaletteName } from './types';
 export const PALETTE_PRESETS: Record<Exclude<PaletteName, 'Custom'>, PaletteDef> = {
   Blueprint: {
     name: 'Blueprint',
-    background: '#0d1f30',
+    background: '#000000',
     foreground: ['#48cae4', '#90e0ef', '#caf0f8', '#0096c7']
-  },
-  'Signal Depth': {
-    name: 'Signal Depth',
-    background: '#081719',
-    foreground: ['#06d6a0', '#118ab2', '#00f5d4', '#52b788']
-  },
-  'Pixel Midnight': {
-    name: 'Pixel Midnight',
-    background: '#0b0d18',
-    foreground: ['#4361ee', '#7209b7', '#4cc9f0', '#3f37c9']
-  },
-  'Alert Mode': {
-    name: 'Alert Mode',
-    background: '#180e0e',
-    foreground: ['#e63946', '#f77f00', '#fcbf49', '#ff5722']
-  },
-  'Steel Red': {
-    name: 'Steel Red',
-    background: '#1a1d23',
-    foreground: ['#e63946', '#ff4d6d', '#c9184a', '#8d99ae']
-  },
-  'Gold Dust': {
-    name: 'Gold Dust',
-    background: '#16130d',
-    foreground: ['#ffd166', '#f4a261', '#e7c169', '#cca43b']
-  },
-  'Dark Violet': {
-    name: 'Dark Violet',
-    background: '#140a20',
-    foreground: ['#7209b7', '#b5179e', '#f72585', '#480ca8']
-  },
-  Rustfade: {
-    name: 'Rustfade',
-    background: '#19120c',
-    foreground: ['#d97736', '#b85d19', '#e09f67', '#8c4f2d']
   },
   Heatwave: {
     name: 'Heatwave',
-    background: '#190804',
+    background: '#000000',
     foreground: ['#ff0055', '#ff5400', '#ffaa00', '#ff3300']
+  },
+  'Purple Raindrops': {
+    name: 'Purple Raindrops',
+    background: '#000000',
+    foreground: [
+      '#f72585',
+      '#b5179e',
+      '#7209b7',
+      '#560bad',
+      '#480ca8',
+      '#3a0ca3',
+      '#3f37c9',
+      '#4361ee',
+      '#4895ef',
+      '#4cc9f0'
+    ]
+  },
+  'Deep Sea Blue': {
+    name: 'Deep Sea Blue',
+    background: '#000000',
+    foreground: ['#85c2ffff', '#0353a4', '#007bffff']
+  },
+  'Pink Fantasy': {
+    name: 'Pink Fantasy',
+    background: '#000000',
+    foreground: [
+      '#ff499e',
+      '#d264b6',
+      '#a480cf',
+      '#779be7',
+      '#49b6ff'
+    ]
+  },
+  'Sunset Gradient': {
+    name: 'Sunset Gradient',
+    background: '#000000',
+    foreground: [
+      '#ff7b00',
+      '#ff8800',
+      '#ff9500',
+      '#ffa200',
+      '#ffaa00',
+      '#ffb700',
+      '#ffc300',
+      '#ffd000',
+      '#ffdd00',
+      '#ffea00'
+    ]
+  },
+  'Whispering Woods': {
+    name: 'Whispering Woods',
+    background: '#000000',
+    foreground: [
+      '#e8f1f2',
+      '#b3efb2',
+      '#7a9e7e',
+      '#31493c'
+    ]
+  },
+  'Enchanted Night': {
+    name: 'Enchanted Night',
+    background: '#000000',
+    foreground: [
+      '#faa6ff',
+      '#7353ba',
+      '#2f195f',
+      '#0f1020',
+      '#efc3f5'
+    ]
+  },
+  'Pastel Dreamy Hues': {
+    name: 'Pastel Dreamy Hues',
+    background: '#000000',
+    foreground: [
+      '#696eff',
+      '#8178ff',
+      '#9983ff',
+      '#b18dff',
+      '#c897ff',
+      '#e0a2ff',
+      '#f8acff'
+    ]
+  },
+  'Pastel Skies': {
+    name: 'Pastel Skies',
+    background: '#000000',
+    foreground: [
+      '#e5d9f2',
+      '#f5efff',
+      '#cdc1ff',
+      '#a594f9',
+      '#7371fc'
+    ]
   }
 };
 
 export const PALETTE_NAMES: PaletteName[] = [
   'Blueprint',
-  'Signal Depth',
-  'Pixel Midnight',
-  'Alert Mode',
-  'Steel Red',
-  'Gold Dust',
-  'Dark Violet',
-  'Rustfade',
   'Heatwave',
+  'Purple Raindrops',
+  'Deep Sea Blue',
+  'Pink Fantasy',
+  'Sunset Gradient',
+  'Whispering Woods',
+  'Enchanted Night',
+  'Pastel Dreamy Hues',
+  'Pastel Skies',
   'Custom'
 ];
 
@@ -71,7 +130,7 @@ export function getPaletteColors(
 ): { background: string; foreground: string[] } {
   if (paletteName === 'Custom') {
     return {
-      background: customBg || '#111111',
+      background: customBg || '#000000',
       foreground: [customFg || '#ffffff']
     };
   }
@@ -83,18 +142,21 @@ export function getPaletteColors(
     };
   }
   return {
-    background: '#0d1f30',
+    background: '#000000',
     foreground: ['#48cae4', '#90e0ef']
   };
 }
 
 /**
- * Parses hex color (e.g. #ffffff or #fff) to RGB components [r, g, b].
+ * Parses hex color (e.g. #ffffff or #fff or #ffffffff) to RGB components [r, g, b].
  */
 export function hexToRgb(hex: string): [number, number, number] {
   let cleaned = hex.replace('#', '').trim();
   if (cleaned.length === 3) {
     cleaned = cleaned.split('').map(c => c + c).join('');
+  }
+  if (cleaned.length === 8) {
+    cleaned = cleaned.slice(0, 6);
   }
   const num = parseInt(cleaned, 16);
   if (isNaN(num) || cleaned.length !== 6) {

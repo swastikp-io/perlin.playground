@@ -26,8 +26,8 @@ interface ExportVideoModalProps {
 }
 
 const FORMAT_OPTIONS: Array<{ value: VideoFormatOption; label: string }> = [
-  { value: 'mp4', label: 'MP4 — H.264 (Recommended for Windows & Mac)' },
-  { value: 'webm', label: 'WebM — VP9 (EBML Duration Patched)' }
+  { value: 'webm', label: 'WebM — VP9 (Recommended: Ultra-Smooth & High Performance)' },
+  { value: 'mp4', label: 'MP4 — H.264 (Standard Video)' }
 ];
 
 const RESOLUTION_OPTIONS: Array<{ value: VideoResolutionOption; label: string }> = [

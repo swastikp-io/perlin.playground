@@ -6,17 +6,18 @@ import { randomizeConfig, ALL_SHAPE_TYPES } from './randomizer';
 import { SketchEngine } from './sketch';
 
 describe('perlin.playground Engine, Shapes, & Randomization', () => {
-  it('defines exactly the 10 required palettes', () => {
+  it('defines the required curated palettes', () => {
     expect(PALETTE_NAMES).toEqual([
       'Blueprint',
-      'Signal Depth',
-      'Pixel Midnight',
-      'Alert Mode',
-      'Steel Red',
-      'Gold Dust',
-      'Dark Violet',
-      'Rustfade',
       'Heatwave',
+      'Purple Raindrops',
+      'Deep Sea Blue',
+      'Pink Fantasy',
+      'Sunset Gradient',
+      'Whispering Woods',
+      'Enchanted Night',
+      'Pastel Dreamy Hues',
+      'Pastel Skies',
       'Custom'
     ]);
   });
@@ -35,16 +36,16 @@ describe('perlin.playground Engine, Shapes, & Randomization', () => {
     ]);
   });
 
-  it('provides valid presets for all non-custom palettes', () => {
+  it('provides valid presets for all non-custom palettes with black backgrounds', () => {
     const nonCustom = PALETTE_NAMES.filter(p => p !== 'Custom');
     for (const name of nonCustom) {
       const preset = PALETTE_PRESETS[name as keyof typeof PALETTE_PRESETS];
       expect(preset).toBeDefined();
       expect(preset.name).toBe(name);
-      expect(preset.background).toMatch(/^#[0-9a-fA-F]{6}$/);
+      expect(preset.background).toBe('#000000');
       expect(preset.foreground.length).toBeGreaterThan(0);
       for (const fg of preset.foreground) {
-        expect(fg).toMatch(/^#[0-9a-fA-F]{6}$/);
+        expect(fg).toMatch(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/);
       }
     }
   });

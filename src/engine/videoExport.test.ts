@@ -191,8 +191,8 @@ describe('High-Quality Video Export System Tests', () => {
       expect(estCustom).toBeCloseTo(35.8, 1);
     });
 
-    it('defaults format to mp4 in DEFAULT_VIDEO_EXPORT_SETTINGS', () => {
-      expect(DEFAULT_VIDEO_EXPORT_SETTINGS.format).toBe('mp4');
+    it('defaults format to webm in DEFAULT_VIDEO_EXPORT_SETTINGS', () => {
+      expect(DEFAULT_VIDEO_EXPORT_SETTINGS.format).toBe('webm');
     });
   });
 

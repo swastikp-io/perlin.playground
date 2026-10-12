@@ -14,12 +14,12 @@ export const ALL_SHAPE_TYPES: ShapeType[] = [
 ];
 
 const CURATED_CUSTOM_PAIRS: Array<{ bg: string; fg: string }> = [
-  { bg: '#0e1117', fg: '#00e5ff' },
-  { bg: '#100b14', fg: '#ff2a85' },
-  { bg: '#0b130e', fg: '#00ff88' },
-  { bg: '#1a140d', fg: '#ffb703' },
-  { bg: '#160d1b', fg: '#a78bfa' },
-  { bg: '#0a101d', fg: '#38bdf8' }
+  { bg: '#000000', fg: '#00e5ff' },
+  { bg: '#000000', fg: '#ff2a85' },
+  { bg: '#000000', fg: '#00ff88' },
+  { bg: '#000000', fg: '#ffb703' },
+  { bg: '#000000', fg: '#a78bfa' },
+  { bg: '#000000', fg: '#38bdf8' }
 ];
 
 /**
