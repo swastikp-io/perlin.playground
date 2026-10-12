@@ -3,11 +3,18 @@ import {
   VideoExportSettings,
   VideoExportProgress,
   DEFAULT_VIDEO_EXPORT_SETTINGS,
+  VideoFormatOption,
   VideoResolutionOption,
   VideoFpsOption,
   VideoQualityOption
 } from '../engine/types';
-import { estimateFileSizeMB, validateExportDuration } from '../engine/recorder';
+import {
+  estimateFileSizeMB,
+  validateExportDuration,
+  getVideoDataRate,
+  getTotalBitrate,
+  formatBitrate
+} from '../engine/recorder';
 
 interface ExportVideoModalProps {
   isOpen: boolean;
@@ -17,6 +24,11 @@ interface ExportVideoModalProps {
   progress: VideoExportProgress | null;
   isExporting: boolean;
 }
+
+const FORMAT_OPTIONS: Array<{ value: VideoFormatOption; label: string }> = [
+  { value: 'mp4', label: 'MP4 — H.264 (Recommended for Windows & Mac)' },
+  { value: 'webm', label: 'WebM — VP9 (EBML Duration Patched)' }
+];
 
 const RESOLUTION_OPTIONS: Array<{ value: VideoResolutionOption; label: string }> = [
   { value: '1080p', label: '1080p — 1920 × 1080' },
@@ -41,11 +53,19 @@ export const ExportVideoModal: React.FC<ExportVideoModalProps> = ({
 
   const validation = validateExportDuration(settings.duration);
   const isValid = validation.valid;
+
+  const defaultDataRate = getVideoDataRate(settings.resolution, settings.fps, settings.quality);
+  const defaultTotalBitrate = getTotalBitrate(settings.resolution, settings.fps, settings.quality);
+
+  const dataRate = settings.dataRate !== undefined ? settings.dataRate : defaultDataRate;
+  const totalBitrate = settings.totalBitrate !== undefined ? settings.totalBitrate : defaultTotalBitrate;
+
   const estimatedMB = estimateFileSizeMB(
     settings.resolution,
     settings.fps,
     settings.quality,
-    Math.max(15, settings.duration)
+    Math.max(15, settings.duration),
+    totalBitrate
   );
 
   const handleDurationChange = (val: number) => {
@@ -54,7 +74,11 @@ export const ExportVideoModal: React.FC<ExportVideoModalProps> = ({
 
   const handleStart = () => {
     if (!isValid || isExporting) return;
-    onStartExport(settings);
+    onStartExport({
+      ...settings,
+      dataRate,
+      totalBitrate
+    });
   };
 
   return (
@@ -83,10 +107,13 @@ export const ExportVideoModal: React.FC<ExportVideoModalProps> = ({
           /* Live Progress View */
           <div className="export-progress-view" id="export-progress-view">
             <div className="export-meta-row">
+              <span className="export-meta-badge">{(settings.format || 'mp4').toUpperCase()}</span>
               <span className="export-meta-badge">{settings.resolution}</span>
               <span className="export-meta-badge">{`${settings.fps} FPS`}</span>
               <span className="export-meta-badge">{`${settings.quality} Quality`}</span>
               <span className="export-meta-badge">{`${settings.duration}s`}</span>
+              <span className="export-meta-badge" id="badge-export-data-rate">{`${formatBitrate(dataRate)} Data Rate`}</span>
+              <span className="export-meta-badge" id="badge-export-total-bitrate">{`${formatBitrate(totalBitrate)} Total Bitrate`}</span>
             </div>
 
             <div className="progress-bar-container">
@@ -126,6 +153,31 @@ export const ExportVideoModal: React.FC<ExportVideoModalProps> = ({
         ) : (
           /* Settings Configuration View */
           <div className="export-settings-form">
+            {/* Video Format */}
+            <div className="form-group" id="form-group-format">
+              <div className="form-label-row">
+                <label htmlFor="select-export-format">Video Format</label>
+              </div>
+              <select
+                id="select-export-format"
+                className="select-dropdown"
+                value={settings.format || 'mp4'}
+                onChange={e => {
+                  const newFormat = e.target.value as VideoFormatOption;
+                  setSettings(prev => ({
+                    ...prev,
+                    format: newFormat
+                  }));
+                }}
+              >
+                {FORMAT_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Resolution */}
             <div className="form-group">
               <div className="form-label-row">
@@ -135,12 +187,17 @@ export const ExportVideoModal: React.FC<ExportVideoModalProps> = ({
                 id="select-export-resolution"
                 className="select-dropdown"
                 value={settings.resolution}
-                onChange={e =>
+                onChange={e => {
+                  const newRes = e.target.value as VideoResolutionOption;
+                  const newRate = getVideoDataRate(newRes, settings.fps, settings.quality);
+                  const newTotal = getTotalBitrate(newRes, settings.fps, settings.quality, undefined, newRate);
                   setSettings(prev => ({
                     ...prev,
-                    resolution: e.target.value as VideoResolutionOption
-                  }))
-                }
+                    resolution: newRes,
+                    dataRate: newRate,
+                    totalBitrate: newTotal
+                  }));
+                }}
               >
                 {RESOLUTION_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>
@@ -191,12 +248,17 @@ export const ExportVideoModal: React.FC<ExportVideoModalProps> = ({
                 id="select-export-fps"
                 className="select-dropdown"
                 value={settings.fps}
-                onChange={e =>
+                onChange={e => {
+                  const newFps = parseInt(e.target.value, 10) as VideoFpsOption;
+                  const newRate = getVideoDataRate(settings.resolution, newFps, settings.quality);
+                  const newTotal = getTotalBitrate(settings.resolution, newFps, settings.quality, undefined, newRate);
                   setSettings(prev => ({
                     ...prev,
-                    fps: parseInt(e.target.value, 10) as VideoFpsOption
-                  }))
-                }
+                    fps: newFps,
+                    dataRate: newRate,
+                    totalBitrate: newTotal
+                  }));
+                }}
               >
                 {FPS_OPTIONS.map(fps => (
                   <option key={fps} value={fps}>
@@ -215,12 +277,17 @@ export const ExportVideoModal: React.FC<ExportVideoModalProps> = ({
                 id="select-export-quality"
                 className="select-dropdown"
                 value={settings.quality}
-                onChange={e =>
+                onChange={e => {
+                  const newQuality = e.target.value as VideoQualityOption;
+                  const newRate = getVideoDataRate(settings.resolution, settings.fps, newQuality);
+                  const newTotal = getTotalBitrate(settings.resolution, settings.fps, newQuality, undefined, newRate);
                   setSettings(prev => ({
                     ...prev,
-                    quality: e.target.value as VideoQualityOption
-                  }))
-                }
+                    quality: newQuality,
+                    dataRate: newRate,
+                    totalBitrate: newTotal
+                  }));
+                }}
               >
                 {QUALITY_OPTIONS.map(q => (
                   <option key={q} value={q}>
@@ -230,7 +297,107 @@ export const ExportVideoModal: React.FC<ExportVideoModalProps> = ({
               </select>
             </div>
 
-            {/* File Size Estimate */}
+            {/* Video Data Rate */}
+            <div className="form-group" id="form-group-data-rate">
+              <div className="form-label-row">
+                <label htmlFor="input-export-data-rate">Data Rate</label>
+                <span className="form-value" id="value-export-data-rate">{formatBitrate(dataRate)}</span>
+              </div>
+              <div className="duration-inputs-row">
+                <input
+                  id="input-export-data-rate"
+                  type="range"
+                  min="2"
+                  max="120"
+                  step="1"
+                  value={Math.round(dataRate / 1_000_000)}
+                  onChange={e => {
+                    const mbps = parseInt(e.target.value, 10);
+                    const newRate = mbps * 1_000_000;
+                    setSettings(prev => ({
+                      ...prev,
+                      dataRate: newRate,
+                      totalBitrate: Math.round(newRate * 1.03)
+                    }));
+                  }}
+                  className="slider"
+                />
+                <div className="bitrate-input-group">
+                  <input
+                    id="input-export-data-rate-number"
+                    type="number"
+                    min="1"
+                    max="200"
+                    value={parseFloat((dataRate / 1_000_000).toFixed(1))}
+                    onChange={e => {
+                      const mbps = parseFloat(e.target.value) || 1;
+                      const newRate = Math.round(mbps * 1_000_000);
+                      setSettings(prev => ({
+                        ...prev,
+                        dataRate: newRate,
+                        totalBitrate: Math.round(newRate * 1.03)
+                      }));
+                    }}
+                    className="number-input"
+                  />
+                  <span className="input-unit">Mbps</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Total Bitrate */}
+            <div className="form-group" id="form-group-total-bitrate">
+              <div className="form-label-row">
+                <label htmlFor="input-export-total-bitrate">Total Bitrate</label>
+                <span className="form-value" id="value-export-total-bitrate">{formatBitrate(totalBitrate)}</span>
+              </div>
+              <div className="duration-inputs-row">
+                <input
+                  id="input-export-total-bitrate"
+                  type="range"
+                  min="2"
+                  max="130"
+                  step="1"
+                  value={Math.round(totalBitrate / 1_000_000)}
+                  onChange={e => {
+                    const mbps = parseInt(e.target.value, 10);
+                    setSettings(prev => ({
+                      ...prev,
+                      totalBitrate: mbps * 1_000_000
+                    }));
+                  }}
+                  className="slider"
+                />
+                <div className="bitrate-input-group">
+                  <input
+                    id="input-export-total-bitrate-number"
+                    type="number"
+                    min="1"
+                    max="210"
+                    value={parseFloat((totalBitrate / 1_000_000).toFixed(1))}
+                    onChange={e => {
+                      const mbps = parseFloat(e.target.value) || 1;
+                      setSettings(prev => ({
+                        ...prev,
+                        totalBitrate: Math.round(mbps * 1_000_000)
+                      }));
+                    }}
+                    className="number-input"
+                  />
+                  <span className="input-unit">Mbps</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Estimates */}
+            <div className="estimate-row">
+              <span className="estimate-label">Data Rate:</span>
+              <span className="estimate-value">{formatBitrate(dataRate)}</span>
+            </div>
+            <div className="estimate-row">
+              <span className="estimate-label">Total Bitrate:</span>
+              <span className="estimate-value">{formatBitrate(totalBitrate)}</span>
+            </div>
             <div className="estimate-row">
               <span className="estimate-label">Estimated File Size:</span>
               <span className="estimate-value">{`~${estimatedMB} MB (estimate)`}</span>

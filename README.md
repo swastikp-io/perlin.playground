@@ -40,8 +40,9 @@ A minimal, design-oriented procedural graphics generator powered by **p5.js**, *
     - **Duration**: Minimum 15 seconds (enforced by validation) with interactive slider and numeric input.
     - **Frame Rates**: `30 FPS` (default) and `60 FPS`.
     - **Quality Presets**: `High` (default), `Very High`, and `Maximum` mapped to tuned bitrate targets.
+    - **Data Rate & Total Bitrate Controls**: Real-time configuration of video data rate (`videoBitsPerSecond`) and total multiplexed bitrate (`bitsPerSecond`), with interactive sliders, numeric inputs (in Mbps), and live badges.
     - **Offscreen Rendering**: Independent rendering pipeline preserving preview state and composition aspect ratio without stretching or distortion.
-    - **Progress & Cancellation**: Real-time progress bar, elapsed time tracker, estimated file size, and clean abort/resource disposal.
+    - **Progress & Cancellation**: Real-time progress bar, elapsed time tracker, data rate and total bitrate status badges, estimated file size, and clean abort/resource disposal.
     - **Output**: Automatic download with structured naming (`perlin-playground-[resolution]-[duration]s.[ext]`).
 
 ## Getting Started

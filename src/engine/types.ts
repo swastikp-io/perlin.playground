@@ -77,7 +77,7 @@ export const DEFAULT_CONFIG: GraphicsConfig = {
 
   rows: 28,
   columns: 28,
-  canvasPadding: 32,
+  canvasPadding: 0,
   xOffset: 0,
   yOffset: 0,
 
@@ -93,22 +93,29 @@ export const DEFAULT_CONFIG: GraphicsConfig = {
 };
 
 // Video Export Types & Settings
+export type VideoFormatOption = 'mp4' | 'webm';
 export type VideoResolutionOption = '1080p' | '1440p' | '4K';
 export type VideoFpsOption = 30 | 60;
 export type VideoQualityOption = 'High' | 'Very High' | 'Maximum';
 
 export interface VideoExportSettings {
+  format?: VideoFormatOption;
   resolution: VideoResolutionOption;
   duration: number; // Minimum 15 seconds
   fps: VideoFpsOption;
   quality: VideoQualityOption;
+  dataRate?: number; // Video data rate in bits per second (e.g. 12,000,000 for 12 Mbps)
+  totalBitrate?: number; // Total multiplexed bitrate in bits per second (e.g. 12,360,000 for 12.36 Mbps)
 }
 
 export const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
+  format: 'mp4',
   resolution: '1080p',
   duration: 15,
   fps: 30,
-  quality: 'High'
+  quality: 'High',
+  dataRate: 12_000_000,
+  totalBitrate: 12_360_000
 };
 
 export interface VideoExportProgress {

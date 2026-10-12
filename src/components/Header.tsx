@@ -56,7 +56,8 @@ export const Header: React.FC<HeaderProps> = ({
             <path d="M15 15l6 6" />
             <path d="M4 4l5 5" />
           </svg>
-          Randomize
+          <span className="btn-text-full">Randomize</span>
+          <span className="btn-text-short" aria-hidden="true">Random</span>
         </button>
 
         <button
@@ -65,8 +66,10 @@ export const Header: React.FC<HeaderProps> = ({
           onClick={onExportImage}
           disabled={isRecording}
           type="button"
+          title="Export current canvas frame as PNG image"
         >
-          Export Image
+          <span className="btn-text-full">Export Image</span>
+          <span className="btn-text-short" aria-hidden="true">Image</span>
         </button>
 
         <button
@@ -76,9 +79,17 @@ export const Header: React.FC<HeaderProps> = ({
           type="button"
           title={isRecording ? 'View recording progress / Cancel' : 'Open Video Export settings'}
         >
-          {isRecording
-            ? `Recording... ${recordingCountdown ? `(${recordingCountdown}s)` : ''}`
-            : 'Export Video'}
+          {isRecording ? (
+            <>
+              <span className="btn-text-full">{`Recording... ${recordingCountdown ? `(${recordingCountdown}s)` : ''}`}</span>
+              <span className="btn-text-short" aria-hidden="true">{`Rec ${recordingCountdown ? `${recordingCountdown}s` : ''}`}</span>
+            </>
+          ) : (
+            <>
+              <span className="btn-text-full">Export Video</span>
+              <span className="btn-text-short" aria-hidden="true">Video</span>
+            </>
+          )}
         </button>
       </div>
     </header>

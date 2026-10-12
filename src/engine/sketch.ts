@@ -246,8 +246,10 @@ export class SketchEngine {
   private initP5(): void {
     const sketch = (p: p5) => {
       p.setup = () => {
-        const w = Math.max(100, this.container.clientWidth || 800);
-        const h = Math.max(100, this.container.clientHeight || 800);
+        const rawW = this.container.clientWidth || 960;
+        const rawH = this.container.clientHeight || Math.round(rawW / (16 / 9));
+        const w = Math.max(160, Math.floor(rawW));
+        const h = Math.max(90, Math.floor(rawH));
         const renderer = p.createCanvas(w, h);
         this.canvasElement = renderer.elt as HTMLCanvasElement;
 

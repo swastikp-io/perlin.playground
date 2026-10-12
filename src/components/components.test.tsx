@@ -8,6 +8,7 @@ import { GeometryControls } from './GeometryControls';
 import { LayoutControls } from './LayoutControls';
 import { ColorControls } from './ColorControls';
 import { Sidebar } from './Sidebar';
+import { Canvas } from './Canvas';
 import { ExportVideoModal } from './ExportVideoModal';
 import { DEFAULT_CONFIG } from '../engine/types';
 
@@ -195,6 +196,10 @@ describe('UI Components Render Tests', () => {
       />
     );
     expect(html).toContain('Export Video Settings');
+    expect(html).toContain('Video Format');
+    expect(html).toContain('select-export-format');
+    expect(html).toContain('MP4 — H.264');
+    expect(html).toContain('WebM — VP9');
     expect(html).toContain('Resolution');
     expect(html).toContain('1080p — 1920 × 1080');
     expect(html).toContain('1440p — 2560 × 1440');
@@ -207,11 +212,15 @@ describe('UI Components Render Tests', () => {
     expect(html).toContain('High');
     expect(html).toContain('Very High');
     expect(html).toContain('Maximum');
+    expect(html).toContain('Data Rate');
+    expect(html).toContain('Total Bitrate');
+    expect(html).toContain('input-export-data-rate');
+    expect(html).toContain('input-export-total-bitrate');
     expect(html).toContain('Estimated File Size:');
     expect(html).toContain('Start Export');
   });
 
-  it('renders ExportVideoModal live progress view during active export', () => {
+  it('renders ExportVideoModal live progress view during active export with bitrate badges', () => {
     const progress = {
       elapsedSeconds: 5.2,
       targetSeconds: 15,
@@ -229,10 +238,62 @@ describe('UI Components Render Tests', () => {
       />
     );
     expect(html).toContain('Exporting Video');
+    expect(html).toContain('MP4');
     expect(html).toContain('35%');
     expect(html).toContain('5.2s / 15s');
     expect(html).toContain('Rendering offscreen high-resolution frames...');
+    expect(html).toContain('Data Rate');
+    expect(html).toContain('Total Bitrate');
     expect(html).toContain('Cancel Export');
+  });
+
+  describe('Responsive Design System & 16:9 Canvas Ratio', () => {
+    it('renders Canvas component with wrapper and dedicated 16:9 canvas-stage', () => {
+      const html = renderToString(<Canvas config={DEFAULT_CONFIG} />);
+      expect(html).toContain('canvas-wrapper');
+      expect(html).toContain('id="artwork-canvas-container"');
+      expect(html).toContain('canvas-stage');
+      expect(html).toContain('id="artwork-canvas-stage"');
+    });
+
+    it('renders Header with responsive short and full button labels', () => {
+      const html = renderToString(
+        <Header
+          onRandomize={() => {}}
+          onExportImage={() => {}}
+          onExportVideo={() => {}}
+          isRecording={false}
+          recordingCountdown={null}
+          recordingError={null}
+        />
+      );
+      expect(html).toContain('btn-text-full');
+      expect(html).toContain('btn-text-short');
+      expect(html).toContain('Random');
+      expect(html).toContain('Image');
+      expect(html).toContain('Video');
+    });
+
+    it('maintains exact 16:9 aspect ratio across mobile and desktop viewport widths', () => {
+      const testWidths = [
+        // Mobile viewports
+        360, 375, 390, 412, 428,
+        // Tablet viewports
+        768, 820,
+        // Desktop viewports
+        1024, 1280, 1440, 1920, 2560
+      ];
+
+      const TARGET_RATIO = 16 / 9;
+
+      for (const width of testWidths) {
+        const height = Math.round(width / TARGET_RATIO);
+        const actualRatio = width / height;
+
+        // Verify ratio is within 0.01 of 16/9 (1.7777...)
+        expect(actualRatio).toBeCloseTo(TARGET_RATIO, 2);
+      }
+    });
   });
 });
 

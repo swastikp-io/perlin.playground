@@ -13,30 +13,47 @@ export const Canvas: React.FC<CanvasProps> = ({
   onEngineReady,
   onEngineDestroyed
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<SketchEngine | null>(null);
 
-  // Initialize engine once on mount
+  // Initialize engine once on mount inside the 16:9 stage container
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!stageRef.current) return;
 
-    const engine = new SketchEngine(containerRef.current, config);
+    const engine = new SketchEngine(stageRef.current, config);
     engineRef.current = engine;
     if (onEngineReady) {
       onEngineReady(engine);
     }
 
-    // Set up ResizeObserver to handle fluid container resizing
+    // Measure available wrapper space and utilize full canvas for preview with zero margins
+    const updateDimensions = (w: number, h: number) => {
+      if (w <= 0 || h <= 0) return;
+      const stageW = Math.floor(w);
+      const stageH = Math.floor(h);
+
+      if (stageRef.current) {
+        stageRef.current.style.width = '100%';
+        stageRef.current.style.height = '100%';
+      }
+      engine.resize(stageW, stageH);
+    };
+
     const resizeObserver = new ResizeObserver(entries => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          engine.resize(Math.floor(width), Math.floor(height));
-        }
+        updateDimensions(width, height);
       }
     });
 
-    resizeObserver.observe(containerRef.current);
+    if (wrapperRef.current) {
+      resizeObserver.observe(wrapperRef.current);
+      const rect = wrapperRef.current.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        updateDimensions(rect.width, rect.height);
+      }
+    }
 
     return () => {
       resizeObserver.disconnect();
@@ -56,8 +73,10 @@ export const Canvas: React.FC<CanvasProps> = ({
   }, [config]);
 
   return (
-    <main className="canvas-wrapper" id="artwork-canvas-container" ref={containerRef}>
-      {/* p5 canvas will be injected here */}
+    <main className="canvas-wrapper" id="artwork-canvas-container" ref={wrapperRef}>
+      <div className="canvas-stage" id="artwork-canvas-stage" ref={stageRef}>
+        {/* p5 canvas will be injected here */}
+      </div>
     </main>
   );
 };
