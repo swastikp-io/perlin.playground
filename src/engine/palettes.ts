@@ -76,7 +76,6 @@ export const PALETTE_PRESETS: Record<Exclude<PaletteName, 'Custom'>, PaletteDef>
       '#faa6ff',
       '#7353ba',
       '#2f195f',
-      '#0f1020',
       '#efc3f5'
     ]
   },
