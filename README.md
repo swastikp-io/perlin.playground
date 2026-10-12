@@ -52,12 +52,42 @@ A minimal, design-oriented procedural graphics generator powered by **p5.js**, *
 npm run dev
 ```
 
-### Production Build
+### Production Build & Preview
 ```bash
 npm run build
+npm run preview
 ```
 
 ### Testing
 ```bash
 npm run test
 ```
+
+## Deployment to Vercel
+
+`perlin.playground` is pre-configured for seamless deployment to [Vercel](https://vercel.com).
+
+### Option 1: Git Integration (Recommended)
+1. Push your code to GitHub, GitLab, or Bitbucket.
+2. Go to [Vercel Dashboard](https://vercel.com/new) and click **"Add New Project"**.
+3. Import your `perlin.playground` repository.
+4. Vercel automatically detects the Vite framework settings from `vercel.json`:
+   - **Framework Preset**: `Vite`
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+5. Click **Deploy**.
+
+### Option 2: Vercel CLI
+Deploy directly from your terminal:
+```bash
+# Preview deployment
+npx vercel
+
+# Production deployment
+npx vercel --prod
+```
+
+### Configuration Details
+- [`vercel.json`](vercel.json): Configured with SPA rewrite rules (`/(.*)` &rarr; `/index.html`), long-term caching headers for immutable assets (`/assets/*`), and standard security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, etc.).
+- [`vite.config.ts`](vite.config.ts): Optimized with vendor chunk splitting (`vendor-react`, `vendor-p5`) for efficient edge caching and minimal initial payload size.
+
